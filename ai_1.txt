@@ -1,0 +1,134 @@
+Slide 1: Title Slide
+(Title) Machine Learning: Teaching Machines to Learn
+(Subtitle) From a Single Neuron to the AI Revolution
+(Your Name/Logo)
+
+Slide 2: How Do We Learn?
+Learning is Pattern Recognition.
+
+As humans, we don't memorize every single cat we see. We see a few, form a concept of "cat-ness" (whiskers, fur, paws), and then can recognize millions of new cats we've never seen.
+
+We learn from experience and feedback. We make a mistake, we correct our mental model.
+
+What if a machine could do the same? What if instead of being programmed with rigid rules, it could learn the rules itself from data?
+
+Slide 3: The Dream of a Learning Machine
+The idea of an artificial brain has fascinated us for centuries.
+
+But how do you actually build one?
+
+In 1958, a psychologist named Frank Rosenblatt at Cornell Aeronautical Laboratory created the first practical design for a learning machine. He called it the Perceptron.
+
+It wasn't just a program; it was custom-built hardware, funded by the US Navy, meant to be the "brain" of a ship-guiding computer that could learn to recognize enemies.
+
+Slide 4: The Perceptron: A Model of a Neuron
+Rosenblatt was inspired by biology. He modeled his machine after a simple brain neuron.
+
+The Core Idea: A neuron takes in signals, decides if they are strong enough, and then "fires" an output signal.
+
+The Perceptron does the same thing mathematically:
+
+https://i.imgur.com/3WgQCqL.png
+
+Inputs (X1, X2...): The raw data. (e.g., Pixels of an image, sensor readings).
+
+Weights (W1, W2...): The importance of each input. This is what the machine learns.
+
+Summation (Σ): Adds up all (Input * Weight). The total "evidence."
+
+Bias (b): A learned tendency to say "yes" or "no" before seeing any evidence. Like a predisposition.
+
+Activation Function: The decision rule. "Is the total evidence strong enough?" If (Sum + Bias) > 0, output 1 (YES), else output 0 (NO).
+
+Slide 5: How Does It Learn? The Perceptron Learning Rule
+This is Rosenblatt's genius. The machine starts with random weights (guessing).
+
+It makes a prediction on a data point.
+
+If correct: It does nothing. "My weights are good for this example."
+
+If wrong: It nudges its weights and bias.
+
+Nudge Rule: New Weight = Old Weight + (Learning Rate * Input * Error)
+
+This simple, mechanical process is repeated thousands of times. With each mistake, the weights get a little better.
+
+Rosenblatt proved: If a solution exists, this rule will find it.
+
+Slide 6: The "Dividing Line" & Perceptron Space
+What is the Perceptron actually learning? A rule. This rule is visualized as a dividing line.
+
+Imagine plotting your data on a graph. The perceptron's job is to draw a straight line that separates, for example, "Cats" from "Dogs."
+
+The learned weights and bias define the slope and position of this line.
+
+Why is this a revolution? We didn't code the rule "if whisker_length > 5 then cat." The machine discovered the rule itself by finding the best possible dividing line through trial and error.
+
+Slide 7: The Flaw: The Limitation of a Single Line
+In 1969, AI pioneers Marvin Minsky & Seymour Papert published a devastating critique.
+
+They proved mathematically that a single perceptron has a fatal flaw: it can only learn rules that can be separated by a single straight line. These are called linearly separable problems.
+
+The Classic Example: The XOR Problem
+
+Rule: Output 1 if the inputs are different, Output 0 if they are the same.
+
+Input 1	Input 2	Output
+0	0	0
+0	1	1
+1	0	1
+1	1	0
+Try to draw one straight line to separate the 0s from the 1s. You can't. This simple problem is impossible for a single perceptron.
+
+Slide 8: The AI Winter
+Minsky and Papert's book, Perceptrons, was so influential it convinced the world that neural networks were a dead end.
+
+Funding dried up. Research stopped. This period, known as the AI Winter, lasted for over a decade.
+
+The dream of a learning machine was put on ice.
+
+Slide 9: The Revival: A Solution Through Layers
+The solution was hinted at in Minsky and Papert's own book: use more than one perceptron!
+
+The idea: Stack perceptrons in layers.
+
+First Layer: Multiple perceptrons, each learning a simple, single line.
+
+Second Layer: A perceptron that takes the outputs of the first layer as its inputs. It learns to combine their simple lines into a more complex shape.
+
+This architecture is called a Multilayer Perceptron (MLP) or a neural network.
+
+Slide 10: Solving XOR with Layers
+How does a network solve XOR?
+
+First Layer: Two perceptrons. One learns the line "Input 1 > Input 2". The other learns "Input 2 > Input 1".
+
+These two lines create a new representation of the data.
+
+Second Layer: A final perceptron takes these new inputs and learns to combine them to create the correct XOR output. It draws a new line in this new, transformed space.
+
+Visual:
+
+Show the original XOR plot with two lines from the hidden layer neurons creating three regions.
+
+Show how the final neuron can now draw a line to separate the classes in this new representation.
+
+Slide 11: How to Train This Beast? Backpropagation!
+But there was a new problem: How do you train the first layer? Rosenblatt's rule only worked for the final output.
+
+The breakthrough was the Backpropagation algorithm (1980s).
+
+The Idea: Use calculus (the chain rule) to calculate how much each weight in the entire network, even the very first one, contributed to the final error.
+
+It's like the learning rule, but it can propagate the error backward through all the layers, efficiently adjusting every single weight.
+
+Gradient Descent: This is the optimization process that uses these error calculations to find the best weights by slowly "walking downhill" on a landscape of error.
+
+Slide 12: The Spark of Modern AI
+The combination of Multi-Layer Networks + Backpropagation was the spark that reignited the field.
+
+It provided both the structure (to represent complex ideas) and the learning mechanism (to train that structure).
+
+This core invention is the foundation of every modern AI system, from the voice assistant on your phone to the largest language models like ChatGPT.
+
+It all started with a simple model of a neuron and the dream of a machine that could learn.
