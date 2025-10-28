@@ -1,0 +1,745 @@
+# AUTOMATED TRADING WEB APPLICATION - DESIGN DOCUMENT
+========================================================
+
+## 📋 TABLE OF CONTENTS
+1. System Architecture Overview
+2. Technology Stack
+3. Feature Breakdown
+4. Database Schema
+5. Strategy Engine Design
+6. Web Interface Mockups
+7. API Endpoints
+8. Security Considerations
+9. Implementation Phases
+
+---
+
+## 1. SYSTEM ARCHITECTURE OVERVIEW
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         WEB BROWSER                              │
+│  ┌────────────┐  ┌─────────────┐  ┌──────────────┐            │
+│  │ Dashboard  │  │  Strategy   │  │   Orders &   │            │
+│  │  (Live)    │  │  Builder    │  │  Positions   │            │
+│  └────────────┘  └─────────────┘  └──────────────┘            │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │ HTTP/WebSocket
+┌──────────────────────────▼──────────────────────────────────────┐
+│                    FLASK WEB SERVER                              │
+│  ┌────────────┐  ┌─────────────┐  ┌──────────────┐            │
+│  │   REST     │  │  WebSocket  │  │   Session    │            │
+│  │   API      │  │   Handler   │  │   Manager    │            │
+│  └────────────┘  └─────────────┘  └──────────────┘            │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+┌──────────────────────────▼──────────────────────────────────────┐
+│                    BACKEND SERVICES                              │
+│                                                                   │
+│  ┌────────────────────────────────────────────────────┐         │
+│  │           STRATEGY EXECUTION ENGINE                 │         │
+│  │  ┌──────────────┐  ┌──────────────┐               │         │
+│  │  │  Technical   │  │   Signal     │               │         │
+│  │  │  Indicators  │  │  Generator   │               │         │
+│  │  └──────────────┘  └──────────────┘               │         │
+│  │  ┌──────────────┐  ┌──────────────┐               │         │
+│  │  │   Risk       │  │    Order     │               │         │
+│  │  │  Manager     │  │   Executor   │               │         │
+│  │  └──────────────┘  └──────────────┘               │         │
+│  └────────────────────────────────────────────────────┘         │
+│                                                                   │
+│  ┌────────────────────────────────────────────────────┐         │
+│  │          MARKET DATA MANAGER                        │         │
+│  │  - Live price streaming (WebSocket)                 │         │
+│  │  - Historical data cache                            │         │
+│  │  - Tick processing & aggregation                    │         │
+│  └────────────────────────────────────────────────────┘         │
+│                                                                   │
+│  ┌────────────────────────────────────────────────────┐         │
+│  │          ZERODHA KITE CONNECTOR                     │         │
+│  │  - Authentication management                        │         │
+│  │  - Order placement                                  │         │
+│  │  - Position tracking                                │         │
+│  └────────────────────────────────────────────────────┘         │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+┌──────────────────────────▼──────────────────────────────────────┐
+│                    DATABASE LAYER                                │
+│  ┌────────────┐  ┌─────────────┐  ┌──────────────┐            │
+│  │  SQLite/   │  │    Redis    │  │   File       │            │
+│  │ PostgreSQL │  │   (Cache)   │  │   Storage    │            │
+│  └────────────┘  └─────────────┘  └──────────────┘            │
+└──────────────────────────────────────────────────────────────────┘
+                           │
+┌──────────────────────────▼──────────────────────────────────────┐
+│                   ZERODHA KITE CONNECT API                       │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 2. TECHNOLOGY STACK
+
+### Backend:
+- **Python 3.10+**
+- **Flask** - Web framework
+- **Flask-SocketIO** - WebSocket support for real-time updates
+- **SQLAlchemy** - ORM for database
+- **Redis** - Caching & real-time data
+- **Celery** - Background task processing
+- **pandas** - Data analysis
+- **TA-Lib / pandas-ta** - Technical indicators
+
+### Frontend:
+- **HTML5 / CSS3 / JavaScript**
+- **Bootstrap 5** - UI framework
+- **Chart.js / TradingView Lightweight Charts** - Price charts
+- **Socket.IO Client** - Real-time updates
+- **Alpine.js** - Reactive components
+
+### Database:
+- **SQLite** (Development) / **PostgreSQL** (Production)
+- **Redis** - Real-time data & caching
+
+### Deployment:
+- **Docker** - Containerization
+- **Gunicorn** - WSGI server
+- **Nginx** - Reverse proxy
+
+---
+
+## 3. FEATURE BREAKDOWN
+
+### 3.1 DASHBOARD (Main Page)
+```
+┌─────────────────────────────────────────────────────────────┐
+│  🏠 Dashboard                          👤 User  🔔 Alerts   │
+├─────────────────────────────────────────────────────────────┤
+│                                                               │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
+│  │  Portfolio  │  │   Today's   │  │   Active    │        │
+│  │   Value     │  │    P&L      │  │ Strategies  │        │
+│  │  ₹2,45,000  │  │  +₹2,340   │  │      3      │        │
+│  │  +2.3% ↑    │  │   +0.95%    │  │   Running   │        │
+│  └─────────────┘  └─────────────┘  └─────────────┘        │
+│                                                               │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │             WATCHLIST & LIVE PRICES                   │  │
+│  │  Symbol    LTP      Change   Volume   Signal  Action  │  │
+│  │  INFY    1,450.30  +2.3%    1.2M     🟢 BUY   [Trade]│  │
+│  │  RELIANCE 2,850.10 -0.8%    2.5M     🔴 SELL  [Trade]│  │
+│  │  TCS     3,920.50  +1.2%    800K     ⚪ HOLD  [Trade]│  │
+│  └───────────────────────────────────────────────────────┘  │
+│                                                               │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │           PRICE CHART (Selected Symbol)               │  │
+│  │                                                         │  │
+│  │   [Candlestick Chart with Indicators]                 │  │
+│  │                                                         │  │
+│  └───────────────────────────────────────────────────────┘  │
+│                                                               │
+│  ┌────────────────┐  ┌─────────────────────────────────┐   │
+│  │ POSITIONS      │  │  RECENT ORDERS                  │   │
+│  │                │  │                                   │   │
+│  │ INFY    +5     │  │ 12:45 BUY RELIANCE 1 @ 2850    │   │
+│  │ P&L: +₹230     │  │ 11:30 SELL TCS 2 @ 3920        │   │
+│  │                │  │ 10:15 BUY INFY 5 @ 1448         │   │
+│  └────────────────┘  └─────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 3.2 STRATEGY BUILDER
+```
+┌─────────────────────────────────────────────────────────────┐
+│  ⚙️ Strategy Builder                    [Save] [Run] [Test] │
+├─────────────────────────────────────────────────────────────┤
+│                                                               │
+│  Strategy Name: [Moving Average Crossover            ]      │
+│  Symbols: [INFY, RELIANCE, TCS                       ]      │
+│  Timeframe: [5 minute ▼]  Capital: [₹50,000         ]      │
+│                                                               │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │  ENTRY CONDITIONS (All must be true)                 │  │
+│  │  ┌─────────────────────────────────────────────────┐ │  │
+│  │  │ [Technical Indicator ▼]                         │ │  │
+│  │  │   Indicator: [SMA ▼] Period: [20  ]            │ │  │
+│  │  │   Condition: [crosses above ▼]                  │ │  │
+│  │  │   Value: [SMA ▼] Period: [50  ]                │ │  │
+│  │  └─────────────────────────────────────────────────┘ │  │
+│  │  [+ Add Condition]                                    │  │
+│  └───────────────────────────────────────────────────────┘  │
+│                                                               │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │  EXIT CONDITIONS                                      │  │
+│  │  ┌─────────────────────────────────────────────────┐ │  │
+│  │  │ Target: [2%  ] Stop Loss: [1%  ] Trailing: [✓] │ │  │
+│  │  │ Time-based: Exit at [03:20 PM]                  │ │  │
+│  │  └─────────────────────────────────────────────────┘ │  │
+│  └───────────────────────────────────────────────────────┘  │
+│                                                               │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │  RISK MANAGEMENT                                      │  │
+│  │  Max Position Size: [10,000  ] per trade             │  │
+│  │  Max Open Positions: [3    ]                          │  │
+│  │  Max Daily Loss: [₹5,000  ]                          │  │
+│  └───────────────────────────────────────────────────────┘  │
+│                                                               │
+│  [Backtest] [Save Strategy] [Activate]                      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 3.3 PRE-BUILT STRATEGIES
+
+**Built-in Strategies:**
+
+1. **Moving Average Crossover**
+   - Entry: When fast MA crosses above slow MA
+   - Exit: When fast MA crosses below slow MA
+   - Parameters: Fast period (20), Slow period (50)
+
+2. **RSI Oversold/Overbought**
+   - Entry: RSI < 30 (oversold)
+   - Exit: RSI > 70 (overbought) or Stop Loss
+   - Parameters: RSI period (14), Levels (30/70)
+
+3. **Breakout Strategy**
+   - Entry: Price breaks above resistance with volume
+   - Exit: Trailing stop loss or target
+   - Parameters: Lookback period (20), Volume threshold
+
+4. **MACD Signal**
+   - Entry: MACD crosses above signal line
+   - Exit: MACD crosses below signal line
+   - Parameters: Fast (12), Slow (26), Signal (9)
+
+5. **Bollinger Band Bounce**
+   - Entry: Price touches lower band
+   - Exit: Price reaches middle band or stop loss
+   - Parameters: Period (20), Std Dev (2)
+
+6. **Custom Python Strategy**
+   - User can write their own Python code
+   - Access to all indicators and market data
+   - Safety sandbox for execution
+
+### 3.4 ORDER MANAGEMENT
+```
+┌─────────────────────────────────────────────────────────────┐
+│  📊 Orders & Positions                                       │
+├─────────────────────────────────────────────────────────────┤
+│                                                               │
+│  [Positions] [Orders] [Trades] [History]                     │
+│                                                               │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │  OPEN POSITIONS                                       │  │
+│  │  Symbol   Qty   Entry    LTP     P&L    Action       │  │
+│  │  INFY     5     1448.00  1450.30 +230   [Exit][Mod] │  │
+│  │  TCS      -2    3925.00  3920.50 +90    [Exit][Mod] │  │
+│  └───────────────────────────────────────────────────────┘  │
+│                                                               │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │  PENDING ORDERS                                       │  │
+│  │  ID      Symbol  Type    Price   Status   Action     │  │
+│  │  #12345  RELIANCE LIMIT   2850    OPEN    [Cancel]   │  │
+│  │  #12346  INFY     SL      1440    TRIGGER [Modify]   │  │
+│  └───────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 3.5 BACKTESTING MODULE
+```
+┌─────────────────────────────────────────────────────────────┐
+│  📈 Backtest Results                                         │
+├─────────────────────────────────────────────────────────────┤
+│                                                               │
+│  Strategy: Moving Average Crossover                          │
+│  Period: 2024-01-01 to 2024-10-28                           │
+│                                                               │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
+│  │   Total     │  │    Win      │  │   Sharpe    │        │
+│  │   Return    │  │    Rate     │  │    Ratio    │        │
+│  │   +23.5%    │  │    65%      │  │     1.8     │        │
+│  └─────────────┘  └─────────────┘  └─────────────┘        │
+│                                                               │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │           EQUITY CURVE                                │  │
+│  │   [Chart showing portfolio value over time]          │  │
+│  └───────────────────────────────────────────────────────┘  │
+│                                                               │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │  TRADE LOG                                            │  │
+│  │  Date        Symbol  Type  Entry   Exit    P&L       │  │
+│  │  2024-01-15  INFY    BUY   1420    1450   +30       │  │
+│  │  2024-01-20  TCS     BUY   3800    3750   -50       │  │
+│  └───────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 4. DATABASE SCHEMA
+
+```sql
+-- Users Table
+CREATE TABLE users (
+    id INTEGER PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    api_key VARCHAR(100),
+    access_token VARCHAR(200),
+    token_expiry TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Strategies Table
+CREATE TABLE strategies (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id),
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    config JSON NOT NULL,  -- Strategy parameters
+    is_active BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Watchlist Table
+CREATE TABLE watchlist (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id),
+    symbol VARCHAR(20) NOT NULL,
+    exchange VARCHAR(10) NOT NULL,
+    instrument_token INTEGER,
+    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Positions Table (Synced from Zerodha)
+CREATE TABLE positions (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id),
+    strategy_id INTEGER REFERENCES strategies(id),
+    symbol VARCHAR(20) NOT NULL,
+    quantity INTEGER NOT NULL,
+    entry_price DECIMAL(10,2),
+    current_price DECIMAL(10,2),
+    pnl DECIMAL(10,2),
+    entry_time TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Orders Table
+CREATE TABLE orders (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id),
+    strategy_id INTEGER REFERENCES strategies(id),
+    order_id VARCHAR(50) UNIQUE,  -- Zerodha order ID
+    symbol VARCHAR(20) NOT NULL,
+    exchange VARCHAR(10) NOT NULL,
+    transaction_type VARCHAR(10),  -- BUY/SELL
+    order_type VARCHAR(20),  -- MARKET/LIMIT
+    quantity INTEGER,
+    price DECIMAL(10,2),
+    status VARCHAR(20),  -- PENDING/COMPLETE/REJECTED/CANCELLED
+    placed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Trades Table (Executed orders)
+CREATE TABLE trades (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id),
+    strategy_id INTEGER REFERENCES strategies(id),
+    order_id INTEGER REFERENCES orders(id),
+    trade_id VARCHAR(50),  -- Zerodha trade ID
+    symbol VARCHAR(20) NOT NULL,
+    transaction_type VARCHAR(10),
+    quantity INTEGER,
+    price DECIMAL(10,2),
+    pnl DECIMAL(10,2),
+    executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Signals Table (Strategy signals generated)
+CREATE TABLE signals (
+    id INTEGER PRIMARY KEY,
+    strategy_id INTEGER REFERENCES strategies(id),
+    symbol VARCHAR(20) NOT NULL,
+    signal_type VARCHAR(10),  -- BUY/SELL/HOLD
+    price DECIMAL(10,2),
+    indicators JSON,  -- Indicator values at signal time
+    executed BOOLEAN DEFAULT FALSE,
+    generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Backtest Results Table
+CREATE TABLE backtest_results (
+    id INTEGER PRIMARY KEY,
+    strategy_id INTEGER REFERENCES strategies(id),
+    start_date DATE,
+    end_date DATE,
+    total_trades INTEGER,
+    winning_trades INTEGER,
+    total_return DECIMAL(10,2),
+    sharpe_ratio DECIMAL(5,2),
+    max_drawdown DECIMAL(5,2),
+    results_json JSON,  -- Detailed results
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Market Data Cache (for fast access)
+CREATE TABLE market_data_cache (
+    id INTEGER PRIMARY KEY,
+    instrument_token INTEGER NOT NULL,
+    symbol VARCHAR(20) NOT NULL,
+    timeframe VARCHAR(10),  -- 1m, 5m, 15m, 1d
+    timestamp TIMESTAMP NOT NULL,
+    open DECIMAL(10,2),
+    high DECIMAL(10,2),
+    low DECIMAL(10,2),
+    close DECIMAL(10,2),
+    volume INTEGER,
+    UNIQUE(instrument_token, timeframe, timestamp)
+);
+
+-- Alerts Table
+CREATE TABLE alerts (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id),
+    alert_type VARCHAR(20),  -- PRICE/SIGNAL/ERROR
+    message TEXT,
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+---
+
+## 5. STRATEGY ENGINE DESIGN
+
+### 5.1 Strategy Execution Flow
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  START: Market Data Tick Received                           │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│  1. Update Price Cache                                       │
+│     - Store tick in Redis                                    │
+│     - Update candle aggregation                              │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│  2. Get Active Strategies for this Symbol                   │
+│     - Query DB for strategies                                │
+│     - Filter by active status                                │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│  3. For Each Strategy:                                       │
+│     a. Calculate Technical Indicators                        │
+│        - SMA, EMA, RSI, MACD, Bollinger Bands, etc.         │
+│     b. Evaluate Entry Conditions                             │
+│        - Check if all conditions are met                     │
+│     c. Evaluate Exit Conditions                              │
+│        - Check existing positions                            │
+│     d. Generate Signal                                       │
+│        - BUY / SELL / HOLD                                   │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│  4. Risk Management Check                                    │
+│     - Verify available capital                               │
+│     - Check max positions limit                              │
+│     - Check daily loss limit                                 │
+│     - Validate position sizing                               │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+                 [Signal Valid?]
+                       │
+          ┌────────────┴────────────┐
+          │                         │
+         YES                        NO
+          │                         │
+          ▼                         ▼
+┌──────────────────────┐   ┌──────────────────┐
+│  5. Execute Order    │   │  6. Log Signal   │
+│     - Place order    │   │     (Not Exec)   │
+│     - Update DB      │   └──────────────────┘
+│     - Send alert     │
+└──────────────────────┘
+          │
+          ▼
+┌─────────────────────────────────────────────────────────────┐
+│  7. Monitor Position                                         │
+│     - Track P&L                                              │
+│     - Check stop loss / target                               │
+│     - Update trailing stop                                   │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│  8. Send Real-time Update to Frontend                       │
+│     - WebSocket notification                                 │
+│     - Update dashboard                                       │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 5.2 Strategy Configuration Format (JSON)
+
+```json
+{
+  "name": "MA Crossover",
+  "symbols": ["INFY", "RELIANCE", "TCS"],
+  "timeframe": "5minute",
+  "capital": 50000,
+  "entry_conditions": [
+    {
+      "type": "indicator_cross",
+      "indicator1": {
+        "name": "SMA",
+        "period": 20
+      },
+      "operator": "crosses_above",
+      "indicator2": {
+        "name": "SMA",
+        "period": 50
+      }
+    },
+    {
+      "type": "volume",
+      "operator": "greater_than",
+      "value": "avg_volume",
+      "period": 20,
+      "multiplier": 1.5
+    }
+  ],
+  "exit_conditions": {
+    "target_percent": 2.0,
+    "stoploss_percent": 1.0,
+    "trailing_stop": true,
+    "trailing_percent": 0.5,
+    "time_based": "15:20"
+  },
+  "risk_management": {
+    "max_position_size": 10000,
+    "max_open_positions": 3,
+    "max_daily_loss": 5000,
+    "position_sizing": "fixed"
+  }
+}
+```
+
+---
+
+## 6. API ENDPOINTS
+
+### Authentication
+- `POST /api/auth/login` - User login
+- `POST /api/auth/callback` - Zerodha OAuth callback
+- `POST /api/auth/logout` - Logout
+- `GET /api/auth/status` - Check auth status
+
+### User & Profile
+- `GET /api/user/profile` - Get user profile
+- `GET /api/user/margins` - Get account margins
+- `PUT /api/user/settings` - Update settings
+
+### Strategies
+- `GET /api/strategies` - List all strategies
+- `POST /api/strategies` - Create new strategy
+- `GET /api/strategies/:id` - Get strategy details
+- `PUT /api/strategies/:id` - Update strategy
+- `DELETE /api/strategies/:id` - Delete strategy
+- `POST /api/strategies/:id/activate` - Activate strategy
+- `POST /api/strategies/:id/deactivate` - Deactivate strategy
+- `POST /api/strategies/:id/backtest` - Run backtest
+
+### Market Data
+- `GET /api/market/instruments` - Get instruments list
+- `GET /api/market/quote/:symbol` - Get real-time quote
+- `GET /api/market/historical/:symbol` - Get historical data
+- `GET /api/watchlist` - Get user watchlist
+- `POST /api/watchlist` - Add to watchlist
+- `DELETE /api/watchlist/:symbol` - Remove from watchlist
+
+### Orders & Positions
+- `GET /api/orders` - Get all orders
+- `POST /api/orders` - Place manual order
+- `PUT /api/orders/:id` - Modify order
+- `DELETE /api/orders/:id` - Cancel order
+- `GET /api/positions` - Get positions
+- `GET /api/trades` - Get trades
+- `GET /api/holdings` - Get holdings
+
+### Signals
+- `GET /api/signals` - Get recent signals
+- `GET /api/signals/:strategy_id` - Get signals for strategy
+
+### Alerts
+- `GET /api/alerts` - Get user alerts
+- `PUT /api/alerts/:id/read` - Mark alert as read
+- `DELETE /api/alerts/:id` - Delete alert
+
+### WebSocket Events
+- `connect` - Client connects
+- `subscribe` - Subscribe to symbols
+- `unsubscribe` - Unsubscribe from symbols
+- `tick` - Market data tick (server → client)
+- `order_update` - Order status update (server → client)
+- `signal` - New signal generated (server → client)
+- `alert` - New alert (server → client)
+
+---
+
+## 7. SECURITY CONSIDERATIONS
+
+1. **Authentication**
+   - Secure session management
+   - Token encryption in database
+   - Automatic token refresh
+
+2. **API Security**
+   - Rate limiting
+   - CORS protection
+   - Input validation & sanitization
+
+3. **Strategy Execution**
+   - Sandbox for custom strategies
+   - Resource limits (CPU, memory)
+   - No access to system functions
+
+4. **Data Protection**
+   - HTTPS only
+   - Encrypted credentials
+   - No sensitive data in logs
+
+5. **Risk Controls**
+   - Hard limits on position sizes
+   - Daily loss limits
+   - Manual override capability
+
+---
+
+## 8. IMPLEMENTATION PHASES
+
+### Phase 1: Core Infrastructure (Week 1-2)
+✅ Setup Flask app structure
+✅ Zerodha authentication integration
+✅ Database schema implementation
+✅ Basic REST API endpoints
+✅ WebSocket setup
+
+### Phase 2: Market Data & Dashboard (Week 3-4)
+✅ Live market data streaming
+✅ Price chart implementation
+✅ Dashboard UI
+✅ Watchlist functionality
+✅ Order placement UI
+
+### Phase 3: Strategy Engine (Week 5-6)
+✅ Technical indicator library
+✅ Signal generation engine
+✅ Risk management module
+✅ Pre-built strategies
+✅ Strategy execution engine
+
+### Phase 4: Strategy Builder UI (Week 7-8)
+✅ Visual strategy builder
+✅ Condition editor
+✅ Parameter configuration
+✅ Strategy testing
+
+### Phase 5: Backtesting (Week 9-10)
+✅ Historical data fetching
+✅ Backtest engine
+✅ Performance metrics
+✅ Results visualization
+
+### Phase 6: Advanced Features (Week 11-12)
+✅ Custom Python strategies
+✅ Paper trading mode
+✅ Advanced alerts
+✅ Performance analytics
+✅ Mobile responsive UI
+
+### Phase 7: Testing & Deployment (Week 13-14)
+✅ Comprehensive testing
+✅ Docker containerization
+✅ Production deployment
+✅ Documentation
+
+---
+
+## 9. SAMPLE WORKFLOW
+
+**User Journey:**
+
+1. **Login**
+   - User authenticates with Zerodha
+   - System stores access token
+
+2. **Setup Watchlist**
+   - Add symbols to monitor (INFY, RELIANCE, TCS)
+   - View live prices on dashboard
+
+3. **Create Strategy**
+   - Choose "Moving Average Crossover"
+   - Configure parameters (20, 50)
+   - Set risk limits (₹10,000 per trade)
+   - Add exit rules (2% target, 1% SL)
+
+4. **Backtest Strategy**
+   - Run on 1 year historical data
+   - Review performance metrics
+   - Adjust parameters if needed
+
+5. **Activate Strategy**
+   - Enable live trading
+   - System starts monitoring prices
+
+6. **Automatic Execution**
+   - Strategy detects crossover signal
+   - Checks risk limits
+   - Places order automatically
+   - Sends notification to user
+
+7. **Monitor & Manage**
+   - View positions in real-time
+   - Track P&L
+   - Receive alerts
+   - Manual override if needed
+
+8. **Review Performance**
+   - Daily/weekly reports
+   - Trade history
+   - Strategy analytics
+
+---
+
+## 10. KEY ADVANTAGES OF THIS DESIGN
+
+✅ **Real-time Execution** - WebSocket for instant updates
+✅ **Flexible Strategies** - Visual builder + custom code
+✅ **Risk Management** - Multiple layers of protection
+✅ **Backtesting** - Test before trading
+✅ **User-Friendly** - Intuitive web interface
+✅ **Scalable** - Can handle multiple users & strategies
+✅ **Modular** - Easy to add new features
+✅ **Safe** - Paper trading mode available
+
+---
+
+## NEXT STEPS
+
+1. Review this design
+2. Prioritize features
+3. Start with Phase 1 implementation
+4. Iterative development with testing
+
+Would you like me to proceed with implementation of any specific phase?
